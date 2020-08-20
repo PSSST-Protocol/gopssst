@@ -68,7 +68,20 @@ func generateX22519Pair(random io.Reader) ([]byte, []byte, error) {
 	return priv, pub, err
 }
 
-func (c *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []byte, replyHandler ReplyHandler, err error) {
+func kdfX25519AESGCM128(dhParam []byte, sharedSecret []byte) (key []byte, iv_c []byte, iv_s []byte) {
+	dkfHash := sha512.New384()
+	dkfHash.Write(dhParam)
+	dkfHash.Write(sharedSecret)
+	derivedBytes := dkfHash.Sum(nil)
+	
+	key = derivedBytes[:16]	
+	iv_c = derivedBytes[16:32]
+	iv_s = derivedBytes[32:]
+
+	return
+}
+
+func (client *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []byte, replyHandler ReplyHandler, err error) {
 	var dhParam, sharedSecret []byte
 
 	var sessionSecret []byte
@@ -79,25 +92,25 @@ func (c *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []byte, r
 
 	requestHeader := header{0, CipherSuiteX25519AESGCM}
 
-	if c.ClientPrivateKey != nil {
+	if client.ClientPrivateKey != nil {
 		requestHeader.Flags |= flagsClientAuth
-		if c.clientPublicKey == nil {
-			if c.clientPublicKey, err = curve25519.X25519(c.ClientPrivateKey, curve25519.Basepoint); err != nil {
+		if client.clientPublicKey == nil {
+			if client.clientPublicKey, err = curve25519.X25519(client.ClientPrivateKey, curve25519.Basepoint); err != nil {
 				return
 			}
-			if c.clientServerPublicKey, err = curve25519.X25519(c.ClientPrivateKey, c.ServerPublicKey); err != nil {
+			if client.clientServerPublicKey, err = curve25519.X25519(client.ClientPrivateKey, client.ServerPublicKey); err != nil {
 				return
 			}
 		}
-		if dhParam, err = curve25519.X25519(sessionSecret, c.clientPublicKey); err != nil {
+		if dhParam, err = curve25519.X25519(sessionSecret, client.clientPublicKey); err != nil {
 			return
 		}
-		if sharedSecret, err = curve25519.X25519(sessionSecret, c.clientServerPublicKey); err != nil {
+		if sharedSecret, err = curve25519.X25519(sessionSecret, client.clientServerPublicKey); err != nil {
 			return
 		}
 
 		extendedData := make([]byte, len(data)+64)
-		copy(extendedData[:32], c.clientPublicKey)
+		copy(extendedData[:32], client.clientPublicKey)
 		copy(extendedData[32:64], sessionSecret)
 		copy(extendedData[64:], data)
 		data = extendedData
@@ -105,19 +118,13 @@ func (c *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []byte, r
 		if dhParam, err = curve25519.X25519(sessionSecret, curve25519.Basepoint); err != nil {
 			return
 		}
-		if sharedSecret, err = curve25519.X25519(sessionSecret, c.ServerPublicKey); err != nil {
+		if sharedSecret, err = curve25519.X25519(sessionSecret, client.ServerPublicKey); err != nil {
 			return
 		}
 	}
 
-	dkfHash := sha512.New384()
-	dkfHash.Write(sharedSecret)
-	derivedBytes := dkfHash.Sum(nil)
+	symetricKey, client_nonce, server_nonce := kdfX25519AESGCM128(dhParam, sharedSecret)
 	
-	symetricKey := derivedBytes[:16]	
-	client_nonce := derivedBytes[16:32]
-	server_nonce := derivedBytes[32:]
-
 	var block cipher.Block
 	var aesgcm cipher.AEAD
 	
@@ -152,7 +159,7 @@ func (c *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []byte, r
 			err = &PSSSTError{"Packet is not a reply"}
 			return
 		}
-		if ((c.clientPublicKey == nil) != ((replyHeader.Flags & flagsClientAuth) == 0)) {
+		if ((client.clientPublicKey == nil) != ((replyHeader.Flags & flagsClientAuth) == 0)) {
 			err = &PSSSTError{"Reply client auth mismatch"}
 			return
 		}
@@ -176,7 +183,7 @@ func (c *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []byte, r
 
 
 
-func (c *serverX22519AESGCM128) UnpackIncoming(packetBytes []byte) (data []byte, replyHandler ReplyHandler, clientPublicKey crypto.PublicKey, err error) {
+func (server *serverX22519AESGCM128) UnpackIncoming(packetBytes []byte) (data []byte, replyHandler ReplyHandler, clientPublicKey crypto.PublicKey, err error) {
 	var requestHeader header
 	packetBuffer := bytes.NewReader(packetBytes)
 	if err = binary.Read(packetBuffer, binary.BigEndian, &requestHeader); err != nil {
@@ -199,18 +206,12 @@ func (c *serverX22519AESGCM128) UnpackIncoming(packetBytes []byte) (data []byte,
 
 	var sharedSecret []byte
 	
-	if sharedSecret, err = curve25519.X25519(c.ServerPrivateKey, dhParam); err != nil {
+	if sharedSecret, err = curve25519.X25519(server.ServerPrivateKey, dhParam); err != nil {
 		return
 	}
 	
-	dkfHash := sha512.New384()
-	dkfHash.Write(sharedSecret)
-	derivedBytes := dkfHash.Sum(nil)
-	
-	symetricKey := derivedBytes[:16]	
-	client_nonce := derivedBytes[16:32]
-	server_nonce := derivedBytes[32:]
-	
+	symetricKey, client_nonce, server_nonce := kdfX25519AESGCM128(dhParam, sharedSecret)
+		
 	var block cipher.Block
 	var aesgcm cipher.AEAD
 	
