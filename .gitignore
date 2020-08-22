@@ -1,0 +1,12 @@
+*.so
+*.dylib
+*.dll
+*.exe
+
+_examples/build/*
+
+*.test
+*.out
+
+.idea
+
