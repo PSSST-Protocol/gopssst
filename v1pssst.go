@@ -38,7 +38,7 @@ func generateX22519Private(random io.Reader) (privateKey []byte, err error) {
 	if random == nil {
 		random = rand.Reader
 	}
-	
+
 	var priv [32]byte
 
 	_, err = io.ReadFull(random, priv[:])
@@ -73,10 +73,10 @@ func kdfX25519AESGCM128(dhParam []byte, sharedSecret []byte) (key []byte, iv_c [
 	dkfHash.Write(dhParam)
 	dkfHash.Write(sharedSecret)
 	derivedBytes := dkfHash.Sum(nil)
-	
-	key = derivedBytes[:16]	
-	iv_c = derivedBytes[16:32]
-	iv_s = derivedBytes[32:]
+
+	key = derivedBytes[:16]
+	iv_c = derivedBytes[16:28]
+	iv_s = derivedBytes[28:40]
 
 	return
 }
@@ -124,28 +124,27 @@ func (client *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []by
 	}
 
 	symetricKey, client_nonce, server_nonce := kdfX25519AESGCM128(dhParam, sharedSecret)
-	
+
 	var block cipher.Block
 	var aesgcm cipher.AEAD
-	
+
 	if block, err = aes.NewCipher(symetricKey[:]); err != nil {
 		return
 	}
-	if aesgcm, err = cipher.NewGCMWithNonceSize(block, 16); err != nil {
+	if aesgcm, err = cipher.NewGCM(block); err != nil {
 		return
 	}
-	
-	ciphertext := aesgcm.Seal(nil, client_nonce, data, nil)
 
 	packetBuffer := new(bytes.Buffer)
-	
 	if err = binary.Write(packetBuffer, binary.BigEndian, requestHeader); err != nil {
 		return
 	}
 
 	packetBuffer.Write(dhParam)
-	packetBuffer.Write(ciphertext)	
-	
+
+	ciphertext := aesgcm.Seal(nil, client_nonce, data, packetBuffer.Bytes()[:4])
+	packetBuffer.Write(ciphertext)
+
 	// Construct reply context with DH param and shared secret
 
 	replyHandler = func (replyPacketBytes []byte) (data []byte, err error) {
@@ -171,13 +170,13 @@ func (client *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []by
 			err = &PSSSTError{"Request/reply mismatch"}
 			return
 		}
-		
-		data, err = aesgcm.Open(nil, server_nonce, replyPacketBytes[36:], nil)
+
+		data, err = aesgcm.Open(nil, server_nonce, replyPacketBytes[36:], replyPacketBytes[:4])
 		return
 	}
 
 	packetBytes = packetBuffer.Bytes()
-	
+
 	return
 }
 
@@ -205,33 +204,33 @@ func (server *serverX22519AESGCM128) UnpackIncoming(packetBytes []byte) (data []
 	dhParam := packetBytes[4:36]
 
 	var sharedSecret []byte
-	
+
 	if sharedSecret, err = curve25519.X25519(server.ServerPrivateKey, dhParam); err != nil {
 		return
 	}
-	
+
 	symetricKey, client_nonce, server_nonce := kdfX25519AESGCM128(dhParam, sharedSecret)
-		
+
 	var block cipher.Block
 	var aesgcm cipher.AEAD
-	
+
 	if block, err = aes.NewCipher(symetricKey[:]); err != nil {
 		return
 	}
-	if aesgcm, err = cipher.NewGCMWithNonceSize(block, 16); err != nil {
+	if aesgcm, err = cipher.NewGCM(block); err != nil {
 		return
 	}
 
 	var payload []byte
-	if payload, err = aesgcm.Open(nil, client_nonce, packetBytes[36:], nil); err != nil {
+	if payload, err = aesgcm.Open(nil, client_nonce, packetBytes[36:], packetBytes[:4]); err != nil {
 		return
 	}
-	
+
 	if hasClientAuth {
 		clientPublicKeyBytes := payload[:32]
 		ephemeralKey := payload[32:64]
 		var checkClient []byte
-		
+
 		if checkClient, err = curve25519.X25519(ephemeralKey, clientPublicKeyBytes); err != nil {
 			return
 		}
@@ -250,16 +249,16 @@ func (server *serverX22519AESGCM128) UnpackIncoming(packetBytes []byte) (data []
 		if hasClientAuth {
 			replyHeader.Flags |= flagsClientAuth
 		}
-		
-		ciphertext := aesgcm.Seal(nil, server_nonce, data, nil)
 
 		packetBuffer := new(bytes.Buffer)
-	
+
 		if err = binary.Write(packetBuffer, binary.BigEndian, replyHeader); err != nil {
 			return
 		}
 
 		packetBuffer.Write(dhParam)
+
+		ciphertext := aesgcm.Seal(nil, server_nonce, data, packetBuffer.Bytes()[:4])
 		packetBuffer.Write(ciphertext)
 
 		reply = packetBuffer.Bytes()
