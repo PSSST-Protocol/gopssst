@@ -6,7 +6,7 @@ import (
 	"crypto"
 	"encoding/binary"
 
-	"crypto/sha512"
+	"crypto/sha256"
 	"crypto/cipher"
 	"crypto/aes"
 	"crypto/rand"
@@ -69,14 +69,14 @@ func generateX22519Pair(random io.Reader) ([]byte, []byte, error) {
 }
 
 func kdfX25519AESGCM128(dhParam []byte, sharedSecret []byte) (key []byte, iv_c []byte, iv_s []byte) {
-	dkfHash := sha512.New384()
+	dkfHash := sha256.New()
 	dkfHash.Write(dhParam)
 	dkfHash.Write(sharedSecret)
 	derivedBytes := dkfHash.Sum(nil)
 
 	key = derivedBytes[:16]
-	iv_c = derivedBytes[16:28]
-	iv_s = derivedBytes[28:40]
+	iv_c = append(derivedBytes[16:24], "RQST"...)
+	iv_s = append(derivedBytes[24:32], "RPLY"...)
 
 	return
 }
