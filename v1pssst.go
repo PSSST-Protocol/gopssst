@@ -75,8 +75,12 @@ func kdfX25519AESGCM128(dhParam []byte, sharedSecret []byte) (key []byte, iv_c [
 	derivedBytes := dkfHash.Sum(nil)
 
 	key = derivedBytes[:16]
-	iv_c = append(derivedBytes[16:24], "RQST"...)
-	iv_s = append(derivedBytes[24:32], "RPLY"...)
+	iv_c = make([]byte, 8)
+	copy(iv_c, derivedBytes[16:24])
+	iv_c = append(iv_c, "RQST"...)
+	iv_s = make([]byte, 8)
+	copy(iv_s, derivedBytes[24:32])
+	iv_s = append(iv_s, "RPLY"...)
 
 	return
 }

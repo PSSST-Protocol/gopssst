@@ -4,6 +4,7 @@
 *.exe
 
 _examples/build/*
+_examples/*/build/*
 
 *.test
 *.out
