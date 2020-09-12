@@ -1,15 +1,15 @@
 package gopssst
 
 import (
-	"io"
 	"bytes"
 	"crypto"
 	"encoding/binary"
+	"io"
 
-	"crypto/sha256"
-	"crypto/cipher"
 	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 
 	"golang.org/x/crypto/curve25519"
 )
@@ -28,9 +28,9 @@ type serverX22519AESGCM128 struct {
 }
 
 type clientX25519AESGCM128 struct {
-	ServerPublicKey []byte
-	ClientPrivateKey []byte
-	clientPublicKey []byte
+	ServerPublicKey       []byte
+	ClientPrivateKey      []byte
+	clientPublicKey       []byte
 	clientServerPublicKey []byte
 }
 
@@ -151,7 +151,12 @@ func (client *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []by
 
 	// Construct reply context with DH param and shared secret
 
-	replyHandler = func (replyPacketBytes []byte) (data []byte, err error) {
+	replyHandler = func(replyPacketBytes []byte) (data []byte, err error) {
+		if aesgcm == nil {
+			err = &PSSSTError{"reply handler already used"}
+			return
+		}
+
 		var replyHeader header
 		replyPacketBuffer := bytes.NewReader(replyPacketBytes)
 		if err = binary.Read(replyPacketBuffer, binary.BigEndian, &replyHeader); err != nil {
@@ -162,7 +167,7 @@ func (client *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []by
 			err = &PSSSTError{"Packet is not a reply"}
 			return
 		}
-		if ((client.clientPublicKey == nil) != ((replyHeader.Flags & flagsClientAuth) == 0)) {
+		if (client.clientPublicKey == nil) != ((replyHeader.Flags & flagsClientAuth) == 0) {
 			err = &PSSSTError{"Reply client auth mismatch"}
 			return
 		}
@@ -176,6 +181,8 @@ func (client *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []by
 		}
 
 		data, err = aesgcm.Open(nil, server_nonce, replyPacketBytes[36:], replyPacketBytes[:4])
+		aesgcm = nil
+
 		return
 	}
 
@@ -183,8 +190,6 @@ func (client *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []by
 
 	return
 }
-
-
 
 func (server *serverX22519AESGCM128) UnpackIncoming(packetBytes []byte) (data []byte, replyHandler ReplyHandler, clientPublicKey crypto.PublicKey, err error) {
 	var requestHeader header
@@ -248,7 +253,12 @@ func (server *serverX22519AESGCM128) UnpackIncoming(packetBytes []byte) (data []
 		data = payload
 	}
 
-	replyHandler = func (data []byte) (reply []byte, err error) {
+	replyHandler = func(data []byte) (reply []byte, err error) {
+		if aesgcm == nil {
+			err = &PSSSTError{"reply handler already used"}
+			return
+		}
+
 		replyHeader := header{flagsReply, CipherSuiteX25519AESGCM}
 		if hasClientAuth {
 			replyHeader.Flags |= flagsClientAuth
@@ -264,6 +274,8 @@ func (server *serverX22519AESGCM128) UnpackIncoming(packetBytes []byte) (data []
 
 		ciphertext := aesgcm.Seal(nil, server_nonce, data, packetBuffer.Bytes()[:4])
 		packetBuffer.Write(ciphertext)
+
+		aesgcm = nil
 
 		reply = packetBuffer.Bytes()
 		return

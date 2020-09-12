@@ -9,5 +9,5 @@ type PSSSTError struct {
 }
 
 func (e *PSSSTError) Error() string {
-    return fmt.Sprintf("PSSST Error: %s", e.message)
+	return fmt.Sprintf("PSSST Error: %s", e.message)
 }

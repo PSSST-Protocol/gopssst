@@ -21,9 +21,9 @@ Package pssst implements the Packet Security for Stateless Server Transactions
 package gopssst
 
 import (
-	"io"
 	"crypto"
 	"crypto/rand"
+	"io"
 )
 
 type header struct {
@@ -31,7 +31,7 @@ type header struct {
 }
 
 const (
-	flagsReply = 1 << 15
+	flagsReply      = 1 << 15
 	flagsClientAuth = 1 << 14
 )
 
@@ -54,7 +54,7 @@ type Client interface {
 	PackOutgoing(data []byte) (packetBytes []byte, replyHandler ReplyHandler, err error)
 }
 
-func NewServer(cipherSuite int, serverPrivateKey crypto.PrivateKey)(server Server, err error) {
+func NewServer(cipherSuite int, serverPrivateKey crypto.PrivateKey) (server Server, err error) {
 	switch cipherSuite {
 	case CipherSuiteX25519AESGCM:
 		keyBytes, ok := serverPrivateKey.([]byte)
@@ -62,7 +62,7 @@ func NewServer(cipherSuite int, serverPrivateKey crypto.PrivateKey)(server Serve
 			err = &PSSSTError{"Incompatible key"}
 			return
 		}
-		
+
 		serverStruct := serverX22519AESGCM128{keyBytes}
 		server = &serverStruct
 	default:
@@ -72,7 +72,7 @@ func NewServer(cipherSuite int, serverPrivateKey crypto.PrivateKey)(server Serve
 	return
 }
 
-func NewClient(cipherSuite int, serverPublicKey crypto.PublicKey, clientPrivateKey crypto.PrivateKey)(client Client, err error) {
+func NewClient(cipherSuite int, serverPublicKey crypto.PublicKey, clientPrivateKey crypto.PrivateKey) (client Client, err error) {
 	switch cipherSuite {
 	case CipherSuiteX25519AESGCM:
 		serverKeyBytes, ok := serverPublicKey.([]byte)
@@ -88,8 +88,8 @@ func NewClient(cipherSuite int, serverPublicKey crypto.PublicKey, clientPrivateK
 				err = &PSSSTError{"Incompatible client key"}
 				return
 			}
-		}	
-		
+		}
+
 		clientStruct := clientX25519AESGCM128{serverKeyBytes, clientKeyBytes, nil, nil}
 		client = &clientStruct
 	default:
@@ -103,7 +103,7 @@ func GenerateKeyPair(cipherSuite int, random io.Reader) (privateKey crypto.Priva
 	if random == nil {
 		random = rand.Reader
 	}
-	
+
 	switch cipherSuite {
 	case CipherSuiteX25519AESGCM:
 		privateKey, publicKey, err = generateX22519Pair(random)

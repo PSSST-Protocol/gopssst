@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestRoundtrip (t *testing.T) {
+func TestRoundtrip(t *testing.T) {
 	serverPrivateKey, serverPublicKey, err := GenerateKeyPair(CipherSuiteX25519AESGCM, nil)
 	if err != nil {
 		t.Errorf("Generate server key failed with %s", err)
@@ -15,12 +15,12 @@ func TestRoundtrip (t *testing.T) {
 	client, _ := NewClient(CipherSuiteX25519AESGCM, serverPublicKey, nil)
 
 	testMessage := []byte("This is a test!")
-	
+
 	outgoingPacket, clientReplyHandler, err := client.PackOutgoing(testMessage)
 	if err != nil {
 		t.Errorf("Packing request packet failed with %s", err)
 	}
-	
+
 	receivedMessage, serverReplyHandler, clientAuthKey, err := server.UnpackIncoming(outgoingPacket)
 	if err != nil {
 		t.Errorf("Unpacking request key failed with %s", err)
@@ -29,7 +29,7 @@ func TestRoundtrip (t *testing.T) {
 	if clientAuthKey != nil {
 		t.Errorf("Client auth found but not provided")
 	}
-	
+
 	if !bytes.Equal(testMessage, receivedMessage) {
 		t.Errorf("Received message did not match")
 	}
@@ -38,19 +38,69 @@ func TestRoundtrip (t *testing.T) {
 	if err != nil {
 		t.Errorf("Packing reply packet failed with %s", err)
 	}
-	
+
 	receivedReply, err := clientReplyHandler(replyPacket)
 	if err != nil {
 		t.Errorf("Unacking reply packet failed with %s", err)
 	}
-	
+
 	if !bytes.Equal(testMessage, receivedReply) {
 		t.Errorf("Round-trip reply did not match")
 	}
 }
 
+func TestServerReplyReuse(t *testing.T) {
+	serverPrivateKey, serverPublicKey, err := GenerateKeyPair(CipherSuiteX25519AESGCM, nil)
+	if err != nil {
+		t.Errorf("Generate server key failed with %s", err)
+	}
 
-func TestRoundtripClientAuth (t *testing.T) {
+	server, _ := NewServer(CipherSuiteX25519AESGCM, serverPrivateKey)
+	client, _ := NewClient(CipherSuiteX25519AESGCM, serverPublicKey, nil)
+
+	testMessage := []byte("This is a test!")
+
+	outgoingPacket, clientReplyHandler, err := client.PackOutgoing(testMessage)
+	if err != nil {
+		t.Errorf("Packing request packet failed with %s", err)
+	}
+
+	receivedMessage, serverReplyHandler, clientAuthKey, err := server.UnpackIncoming(outgoingPacket)
+	if err != nil {
+		t.Errorf("Unpacking request key failed with %s", err)
+	}
+
+	if clientAuthKey != nil {
+		t.Errorf("Client auth found but not provided")
+	}
+
+	if !bytes.Equal(testMessage, receivedMessage) {
+		t.Errorf("Received message did not match")
+	}
+
+	// Try packing the replies twice
+	replyPacket, err := serverReplyHandler(receivedMessage)
+	if err != nil {
+		t.Errorf("Packing reply packet failed with %s", err)
+	}
+
+	_, err = serverReplyHandler(receivedMessage)
+	if err == nil {
+		t.Errorf("Server reply handler alloowed packing twice")
+	}
+
+	_, err = clientReplyHandler(replyPacket)
+	if err != nil {
+		t.Errorf("Unacking reply packet failed with %s", err)
+	}
+
+	_, err = clientReplyHandler(replyPacket)
+	if err == nil {
+		t.Errorf("Client reply handler alloowed packing twice")
+	}
+}
+
+func TestRoundtripClientAuth(t *testing.T) {
 	serverPrivateKey, serverPublicKey, err := GenerateKeyPair(CipherSuiteX25519AESGCM, nil)
 	if err != nil {
 		t.Errorf("Generate server key failed with %s", err)
@@ -60,17 +110,17 @@ func TestRoundtripClientAuth (t *testing.T) {
 	if err != nil {
 		t.Errorf("Generate client key failed with %s", err)
 	}
-	
+
 	server, _ := NewServer(CipherSuiteX25519AESGCM, serverPrivateKey)
 	client, _ := NewClient(CipherSuiteX25519AESGCM, serverPublicKey, clientPrivateKey)
-	
+
 	testMessage := []byte("This is a test!")
-	
+
 	outgoingPacket, clientReplyHandler, err := client.PackOutgoing(testMessage)
 	if err != nil {
 		t.Errorf("Packing request packet failed with %s", err)
 	}
-	
+
 	receivedMessage, serverReplyHandler, clientAuthKey, err := server.UnpackIncoming(outgoingPacket)
 	if err != nil {
 		t.Errorf("Unpacking request key failed with %s", err)
@@ -80,16 +130,16 @@ func TestRoundtripClientAuth (t *testing.T) {
 	if !ok {
 		t.Errorf("Client auth key was not bytes")
 	}
-	
+
 	clientPubKeyBytes, ok := clientPublicKey.([]byte)
 	if !ok {
 		t.Errorf("Client auth key was not bytes")
 	}
-	
+
 	if !bytes.Equal(clientAuthKeyBytes, clientPubKeyBytes) {
 		t.Errorf("Client auth did not match senders")
 	}
-	
+
 	if !bytes.Equal(testMessage, receivedMessage) {
 		t.Errorf("Received message did not match")
 	}
@@ -98,12 +148,12 @@ func TestRoundtripClientAuth (t *testing.T) {
 	if err != nil {
 		t.Errorf("Packing reply packet failed with %s", err)
 	}
-	
+
 	receivedReply, err := clientReplyHandler(replyPacket)
 	if err != nil {
 		t.Errorf("Unacking reply packet failed with %s", err)
 	}
-	
+
 	if !bytes.Equal(testMessage, receivedReply) {
 		t.Errorf("Round-trip reply did not match")
 	}
@@ -138,7 +188,7 @@ func BenchmarkPackRequestClientAuth(b *testing.B) {
 	if err != nil {
 		b.Errorf("Generate client key failed with %s", err)
 	}
-	
+
 	client, _ := NewClient(CipherSuiteX25519AESGCM, serverPublicKey, clientPrivateKey)
 
 	testMessage := []byte("This is a test!")
@@ -162,7 +212,7 @@ func BenchmarkUnpackIncoming(b *testing.B) {
 	client, _ := NewClient(CipherSuiteX25519AESGCM, serverPublicKey, nil)
 
 	testMessage := []byte("This is a test!")
-	
+
 	prebuilt := make([][]byte, b.N)
 	for i := 0; i < b.N; i++ {
 		prebuilt[i], _, err = client.PackOutgoing(testMessage)
@@ -190,12 +240,12 @@ func BenchmarkUnpackIncomingClientAuth(b *testing.B) {
 	if err != nil {
 		b.Errorf("Generate client key failed with %s", err)
 	}
-	
+
 	server, _ := NewServer(CipherSuiteX25519AESGCM, serverPrivateKey)
 	client, _ := NewClient(CipherSuiteX25519AESGCM, serverPublicKey, clientPrivateKey)
-	
+
 	testMessage := []byte("This is a test!")
-	
+
 	prebuilt := make([][]byte, b.N)
 	for i := 0; i < b.N; i++ {
 		prebuilt[i], _, err = client.PackOutgoing(testMessage)
@@ -223,7 +273,7 @@ func BenchmarkUnpackAndReply(b *testing.B) {
 	client, _ := NewClient(CipherSuiteX25519AESGCM, serverPublicKey, nil)
 
 	testMessage := []byte("This is a test!")
-	
+
 	prebuilt := make([][]byte, b.N)
 	for i := 0; i < b.N; i++ {
 		prebuilt[i], _, err = client.PackOutgoing(testMessage)
@@ -247,7 +297,7 @@ func BenchmarkUnpackAndReply(b *testing.B) {
 
 type prepackedReplies struct {
 	replyPacket []byte
-	handler ReplyHandler
+	handler     ReplyHandler
 }
 
 func BenchmarkUnpackReplyPacket(b *testing.B) {
@@ -262,20 +312,20 @@ func BenchmarkUnpackReplyPacket(b *testing.B) {
 	testMessage := []byte("This is a test!")
 
 	var prebuiltN int
-	
+
 	if b.N > 1000 {
 		prebuiltN = 1000
 	} else {
 		prebuiltN = b.N
 	}
-	
+
 	prebuilt := make([]prepackedReplies, prebuiltN)
 	for i := 0; i < prebuiltN; i++ {
 		requestPacket, clientReplyHandler, err := client.PackOutgoing(testMessage)
 		if err != nil {
 			b.Errorf("Making request packet failed with: %s", err)
 		}
-		_, serverReplyhandler, _, err:= server.UnpackIncoming(requestPacket)
+		_, serverReplyhandler, _, err := server.UnpackIncoming(requestPacket)
 		if err != nil {
 			b.Errorf("Unpacking request packet failed with: %s", err)
 		}
@@ -289,7 +339,7 @@ func BenchmarkUnpackReplyPacket(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		packedEntry := prebuilt[i % prebuiltN]
+		packedEntry := prebuilt[i%prebuiltN]
 		packet := packedEntry.replyPacket
 		handler := packedEntry.handler
 		_, err = handler(packet)
@@ -298,4 +348,3 @@ func BenchmarkUnpackReplyPacket(b *testing.B) {
 		}
 	}
 }
-
