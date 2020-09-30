@@ -25,6 +25,7 @@ const v1_SERVER_PACKET_LENGTH = 60
 
 type serverX22519AESGCM128 struct {
 	ServerPrivateKey []byte
+	serverPublicKey []byte
 }
 
 type clientX25519AESGCM128 struct {
@@ -189,6 +190,17 @@ func (client *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []by
 	packetBytes = packetBuffer.Bytes()
 
 	return
+}
+
+func (server *serverX22519AESGCM128) GetServerPublicKey() (key crypto.PublicKey, err error) {
+	if server.serverPublicKey == nil {
+		server.serverPublicKey, err = curve25519.X25519(server.ServerPrivateKey, curve25519.Basepoint)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return server.serverPublicKey, nil
 }
 
 func (server *serverX22519AESGCM128) UnpackIncoming(packetBytes []byte) (data []byte, replyHandler ReplyHandler, clientPublicKey crypto.PublicKey, err error) {

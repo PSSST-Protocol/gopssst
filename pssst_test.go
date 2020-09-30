@@ -49,6 +49,34 @@ func TestRoundtrip(t *testing.T) {
 	}
 }
 
+func TestServerPublicKey(t *testing.T) {
+	serverPrivateKey, serverPublicKey, err := GenerateKeyPair(CipherSuiteX25519AESGCM, nil)
+	if err != nil {
+		t.Errorf("Generate server key failed with %s", err)
+	}
+
+	server, _ := NewServer(CipherSuiteX25519AESGCM, serverPrivateKey)
+
+	retreivedPublicKey, err := server.GetServerPublicKey()
+	if err != nil {
+		t.Errorf("Fetching server public key failed with %s", err)
+	}
+
+	retreivedPublicKeyBytes, ok := retreivedPublicKey.([]byte)
+	if !ok {
+		t.Errorf("Server public key was not bytes")
+	}
+
+	serverPublicKeyBytes, ok := serverPublicKey.([]byte)
+	if !ok {
+		t.Errorf("Server public key was not bytes")
+	}
+
+	if !bytes.Equal(serverPublicKeyBytes, retreivedPublicKeyBytes) {
+		t.Errorf("Retreived public key did not match")
+	}
+}
+
 func TestServerReplyReuse(t *testing.T) {
 	serverPrivateKey, serverPublicKey, err := GenerateKeyPair(CipherSuiteX25519AESGCM, nil)
 	if err != nil {

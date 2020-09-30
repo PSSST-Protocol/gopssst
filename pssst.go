@@ -48,6 +48,7 @@ type ReplyHandler func(data []byte) (reply []byte, err error)
 
 type Server interface {
 	UnpackIncoming(packetBytes []byte) (data []byte, replyHandler ReplyHandler, clientPublicKey crypto.PublicKey, err error)
+	GetServerPublicKey() (key crypto.PublicKey, err error)
 }
 
 type Client interface {
@@ -63,7 +64,7 @@ func NewServer(cipherSuite int, serverPrivateKey crypto.PrivateKey) (server Serv
 			return
 		}
 
-		serverStruct := serverX22519AESGCM128{keyBytes}
+		serverStruct := serverX22519AESGCM128{keyBytes, nil}
 		server = &serverStruct
 	default:
 		err = &PSSSTError{"Unsuported cipher suite"}
