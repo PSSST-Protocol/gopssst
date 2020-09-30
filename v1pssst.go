@@ -14,15 +14,6 @@ import (
 	"golang.org/x/crypto/curve25519"
 )
 
-const v1_CLIENT_MASKED_ID_OFFSET = 4
-const v1_CLIENT_DH_PUBLIC_OFFSET = 20
-const v1_CLIENT_PACKET_LENGTH = 52
-
-const v1_SERVER_MASKED_ID_OFFSET = 4
-const v1_SERVER_MASKED_VALUE_OFFSET = 20
-const v1_SERVER_AUTH_OFFSET = 28
-const v1_SERVER_PACKET_LENGTH = 60
-
 type serverX22519AESGCM128 struct {
 	ServerPrivateKey []byte
 	serverPublicKey []byte
@@ -70,10 +61,10 @@ func generateX22519Pair(random io.Reader) ([]byte, []byte, error) {
 }
 
 func kdfX25519AESGCM128(dhParam []byte, sharedSecret []byte) (key []byte, iv_c []byte, iv_s []byte) {
-	dkfHash := sha256.New()
-	dkfHash.Write(dhParam)
-	dkfHash.Write(sharedSecret)
-	derivedBytes := dkfHash.Sum(nil)
+	kdfHash := sha256.New()
+	kdfHash.Write(dhParam)
+	kdfHash.Write(sharedSecret)
+	derivedBytes := kdfHash.Sum(nil)
 
 	key = derivedBytes[:16]
 	iv_c = make([]byte, 8)
@@ -128,7 +119,7 @@ func (client *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []by
 		}
 	}
 
-	symetricKey, client_nonce, server_nonce := kdfX25519AESGCM128(dhParam, sharedSecret)
+	symetricKey, clientNonce, serverNonce := kdfX25519AESGCM128(dhParam, sharedSecret)
 
 	var block cipher.Block
 	var aesgcm cipher.AEAD
@@ -147,7 +138,7 @@ func (client *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []by
 
 	packetBuffer.Write(dhParam)
 
-	ciphertext := aesgcm.Seal(nil, client_nonce, data, packetBuffer.Bytes()[:4])
+	ciphertext := aesgcm.Seal(nil, clientNonce, data, packetBuffer.Bytes()[:4])
 	packetBuffer.Write(ciphertext)
 
 	// Construct reply context with DH param and shared secret
@@ -181,7 +172,7 @@ func (client *clientX25519AESGCM128) PackOutgoing(data []byte) (packetBytes []by
 			return
 		}
 
-		data, err = aesgcm.Open(nil, server_nonce, replyPacketBytes[36:], replyPacketBytes[:4])
+		data, err = aesgcm.Open(nil, serverNonce, replyPacketBytes[36:], replyPacketBytes[:4])
 		aesgcm = nil
 
 		return
@@ -230,7 +221,7 @@ func (server *serverX22519AESGCM128) UnpackIncoming(packetBytes []byte) (data []
 		return
 	}
 
-	symetricKey, client_nonce, server_nonce := kdfX25519AESGCM128(dhParam, sharedSecret)
+	symetricKey, clientNonce, serverNonce := kdfX25519AESGCM128(dhParam, sharedSecret)
 
 	var block cipher.Block
 	var aesgcm cipher.AEAD
@@ -243,7 +234,7 @@ func (server *serverX22519AESGCM128) UnpackIncoming(packetBytes []byte) (data []
 	}
 
 	var payload []byte
-	if payload, err = aesgcm.Open(nil, client_nonce, packetBytes[36:], packetBytes[:4]); err != nil {
+	if payload, err = aesgcm.Open(nil, clientNonce, packetBytes[36:], packetBytes[:4]); err != nil {
 		return
 	}
 
@@ -284,7 +275,7 @@ func (server *serverX22519AESGCM128) UnpackIncoming(packetBytes []byte) (data []
 
 		packetBuffer.Write(dhParam)
 
-		ciphertext := aesgcm.Seal(nil, server_nonce, data, packetBuffer.Bytes()[:4])
+		ciphertext := aesgcm.Seal(nil, serverNonce, data, packetBuffer.Bytes()[:4])
 		packetBuffer.Write(ciphertext)
 
 		aesgcm = nil
